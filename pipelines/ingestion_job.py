@@ -84,11 +84,10 @@ def get_schema(table_name):
 def run_ingestion():
     spark = get_spark_session()
     
-    # In a real scenario, these would be S3 paths
-    # source_base = "s3://baseball-data-platform-landing-dev/"
-    # target_base = "s3://baseball-data-platform-curated-dev/"
-    source_base = "pipelines/assessment_inputs/"
-    target_base = "curated_data/"
+    source_base = "s3://baseball-data-platform-landing-dev/"
+    target_base = "s3://baseball-data-platform-curated-dev/"
+    # source_base = "pipelines/assessment_inputs/" # Local testing only
+    # target_base = "curated_data/"
     
     tables = ["Batting", "People", "Salaries", "Schools", "CollegePlaying"]
     
@@ -137,7 +136,7 @@ def run_ingestion():
         # Note: In a real environment, we would use .saveAsTable(f"curated.{table}")
         # Here we simulate with file path
         print(f"Writing {table} to {target_path}...")
-        # write_builder.save(target_path) # Commented out for local non-spark env
+        write_builder.save(target_path)
         print(f"Successfully processed {table}")
 
 if __name__ == "__main__":

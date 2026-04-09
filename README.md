@@ -18,6 +18,7 @@ This repository contains a comprehensive, secure, and cost-efficient data platfo
 - **Security:** Custom KMS CMK with least-privilege policies; IAM Instance Profile for Databricks.
 - **Governance:** AWS Budget with an 80% alert threshold and an AWS Config rule to prohibit public S3 access.
 - **Verification:** Run `terraform validate` and see `infra/terraform_plan.txt` for the execution plan.
+Note: The Terraform configuration is written for an AWS environment with a remote S3 backend. For this submission, code was validated via static analysis and mock planning.
 
 ### Section B: Databricks Job Enablement
 - **Cluster Policy:** Enforces 15-minute autotermination, restricted node types, and LTS runtimes to ensure cost and stability.
