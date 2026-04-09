@@ -43,3 +43,7 @@ This repository contains a comprehensive, secure, and cost-efficient data platfo
 
 ## Design & Assumptions
 For a deep dive into the architecture and security choices, please refer to [docs/README.md](docs/README.md).
+
+---
+**Author:** Daniel Chi
+**Date:** April 9, 2026
