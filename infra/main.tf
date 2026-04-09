@@ -1,7 +1,6 @@
 terraform {
-  # This is "State Management"
   backend "s3" {
-    bucket         = "baseball-platform-terraform-state" # Should be unique
+    bucket         = "baseball-platform-terraform-state"
     key            = "platform-test/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-state-locking"
@@ -10,19 +9,17 @@ terraform {
 }
 
 provider "aws" {
-  region                      = var.region
-  
-  # These flags tell Terraform NOT to talk to the real AWS STS service
+  region = var.region
+
+  # Mock configurations for local validation/offline planning
   skip_credentials_validation = true
   skip_requesting_account_id  = true
   skip_metadata_api_check     = true
-  
-  # Mock keys so the provider stays in "offline" mode
   access_key                  = "mock_key"
   secret_key                  = "mock_secret"
 }
 
-# 1. KMS Key for S3 Encryption (SSE-KMS)
+# --- Data Platform Encryption (KMS) ---
 resource "aws_kms_key" "s3_key" {
   description             = "KMS key for data platform S3 buckets"
   deletion_window_in_days = 7
@@ -40,7 +37,7 @@ data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "kms_policy" {
   statement {
-    sid       = "Enable IAM User Permissions"
+    sid       = "EnableIAMUserPermissions"
     effect    = "Allow"
     actions   = ["kms:*"]
     resources = ["*"]
@@ -51,7 +48,7 @@ data "aws_iam_policy_document" "kms_policy" {
   }
 
   statement {
-    sid       = "Allow Databricks to use the key"
+    sid       = "AllowComputeRoleAccess"
     effect    = "Allow"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
     resources = ["*"]
@@ -62,7 +59,7 @@ data "aws_iam_policy_document" "kms_policy" {
   }
 }
 
-# 2. S3 Buckets: Landing and Curated
+# --- S3 Storage Layer (Medallion Architecture) ---
 resource "aws_s3_bucket" "landing" {
   bucket = "${var.project_name}-landing-${var.environment}"
   tags   = var.common_tags
@@ -73,7 +70,6 @@ resource "aws_s3_bucket" "curated" {
   tags   = var.common_tags
 }
 
-# Enforce Versioning on Curated
 resource "aws_s3_bucket_versioning" "curated_versioning" {
   bucket = aws_s3_bucket.curated.id
   versioning_configuration {
@@ -81,7 +77,7 @@ resource "aws_s3_bucket_versioning" "curated_versioning" {
   }
 }
 
-# Security: Block Public Access
+# --- Security & Governance Enforcement ---
 resource "aws_s3_bucket_public_access_block" "landing_block" {
   bucket                  = aws_s3_bucket.landing.id
   block_public_acls       = true
@@ -98,7 +94,6 @@ resource "aws_s3_bucket_public_access_block" "curated_block" {
   restrict_public_buckets = true
 }
 
-# Enforce TLS and SSE-KMS
 resource "aws_s3_bucket_policy" "landing_policy" {
   bucket = aws_s3_bucket.landing.id
   policy = data.aws_iam_policy_document.s3_enforcement_landing.json
@@ -106,7 +101,7 @@ resource "aws_s3_bucket_policy" "landing_policy" {
 
 data "aws_iam_policy_document" "s3_enforcement_landing" {
   statement {
-    sid     = "DenyInsecureConnections"
+    sid     = "EnforceTLS"
     effect  = "Deny"
     actions = ["s3:*"]
     resources = [
@@ -132,7 +127,7 @@ resource "aws_s3_bucket_policy" "curated_policy" {
 
 data "aws_iam_policy_document" "s3_enforcement_curated" {
   statement {
-    sid     = "DenyInsecureConnections"
+    sid     = "EnforceTLS"
     effect  = "Deny"
     actions = ["s3:*"]
     resources = [
@@ -151,11 +146,10 @@ data "aws_iam_policy_document" "s3_enforcement_curated" {
   }
 }
 
-# Lifecycle Rule: Transition/Delete Raw Data
 resource "aws_s3_bucket_lifecycle_configuration" "landing_lifecycle" {
   bucket = aws_s3_bucket.landing.id
   rule {
-    id     = "archive-old-raw-data"
+    id     = "ArchiveRawData"
     status = "Enabled"
     transition {
       days          = 30
@@ -167,8 +161,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "landing_lifecycle" {
   }
 }
 
-# 3. IAM Roles
-# Databricks Job Role (Read Raw / Write Curated)
+# --- Identity & Access Management ---
 resource "aws_iam_role" "databricks_job_role" {
   name = "databricks-job-role"
   assume_role_policy = jsonencode({
@@ -211,7 +204,6 @@ resource "aws_iam_role_policy" "databricks_s3_policy" {
   })
 }
 
-# CI/CD Role (Restricted permissions)
 resource "aws_iam_role" "ci_cd_role" {
   name = "platform-ci-cd-role"
   assume_role_policy = jsonencode({
@@ -236,7 +228,7 @@ resource "aws_iam_role_policy" "ci_cd_policy" {
           "s3:CreateBucket", "s3:PutBucketPolicy", "s3:PutBucketPublicAccessBlock",
           "kms:CreateKey", "kms:PutKeyPolicy", "iam:CreateRole", "iam:PutRolePolicy"
         ]
-        Resource = "*" # Scoped down in a real scenario
+        Resource = "*"
       }
     ]
   })

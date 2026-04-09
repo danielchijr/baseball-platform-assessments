@@ -7,7 +7,10 @@ def get_spark_session():
     return SparkSession.builder.appName("BaseballDataIngestion").getOrCreate()
 
 def get_schema(table_name):
-    """Returns the expected schema for each table to ensure strict data quality."""
+    """
+    Enforces strict typing to ensure downstream data consistency 
+    and prevent schema drift issues.
+    """
     schemas = {
         "Batting": StructType([
             StructField("playerID", StringType(), False),
@@ -84,10 +87,9 @@ def get_schema(table_name):
 def run_ingestion():
     spark = get_spark_session()
     
+    # Configuration for S3 Landing and Curated zones
     source_base = "s3://baseball-data-platform-landing-dev/"
     target_base = "s3://baseball-data-platform-curated-dev/"
-    # source_base = "pipelines/assessment_inputs/" # Local testing only
-    # target_base = "curated_data/"
     
     tables = ["Batting", "People", "Salaries", "Schools", "CollegePlaying"]
     
@@ -98,14 +100,13 @@ def run_ingestion():
         
         schema = get_schema(table)
         
-        # 1. Ingest with strict schema
+        # Ingest with forced schema enforcement
         df = spark.read.format("csv") \
             .option("header", "true") \
             .schema(schema) \
             .load(source_path)
         
-        # 2. Data Quality Checks
-        # Drop rows with null keys
+        # DQ Layer: Primary Key integrity validation
         primary_keys = {
             "Batting": ["playerID", "yearID", "teamID"],
             "People": ["playerID"],
@@ -118,23 +119,21 @@ def run_ingestion():
         for key in keys:
             df = df.filter(col(key).isNotNull())
             
-        # Year range validation
+        # Business Logic: Filter valid year ranges
         if "yearID" in df.columns:
             df = df.filter((col("yearID") >= 1800) & (col("yearID") <= 2025))
             
-        # 3. Add metadata
+        # Add metadata for auditability
         df = df.withColumn("ingested_at", current_timestamp()) \
                .withColumn("source_file", lit(f"{table}.csv"))
         
-        # 4. Write to Delta (Idempotent)
-        # Partitioning by yearID for Batting as requested
+        # Idempotent write using Delta Lake
         write_builder = df.write.format("delta").mode("overwrite")
         
+        # Optimization: Partition by yearID for high-volume analytical tables
         if table == "Batting":
             write_builder = write_builder.partitionBy("yearID")
             
-        # Note: In a real environment, we would use .saveAsTable(f"curated.{table}")
-        # Here we simulate with file path
         print(f"Writing {table} to {target_path}...")
         write_builder.save(target_path)
         print(f"Successfully processed {table}")
