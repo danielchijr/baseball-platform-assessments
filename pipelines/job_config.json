@@ -1,0 +1,45 @@
+{
+  "name": "Baseball_Ingestion_Job",
+  "tasks": [
+    {
+      "task_key": "ingest_all_csvs",
+      "new_cluster": {
+        "spark_version": "13.3.x-scala2.12",
+        "node_type_id": "m5.large",
+        "autotermination_minutes": 15,
+        "policy_id": "POL-BASEBALL-INGESTION"
+      },
+      "spark_python_task": {
+        "python_file": "pipelines/ingestion_job.py"
+      },
+      "email_notifications": {
+        "on_failure": ["admin@example.com"],
+        "on_start": ["admin@example.com"]
+      },
+      "retry_policy": {
+        "max_retries": 3,
+        "interval_seconds": 300,
+        "on_failure_callback_ms": 1000
+      }
+    }
+  ],
+  "job_clusters": [
+    {
+      "job_cluster_key": "ingestion_cluster",
+      "new_cluster": {
+        "spark_version": "13.3.x-scala2.12",
+        "node_type_id": "m5.large",
+        "autoscale": {
+          "min_workers": 2,
+          "max_workers": 5
+        }
+      }
+    }
+  ],
+  "schedule": {
+    "quartz_cron_expression": "0 0 2 * * ?",
+    "timezone_id": "UTC",
+    "pause_status": "UNPAUSED"
+  },
+  "max_concurrent_runs": 1
+}
